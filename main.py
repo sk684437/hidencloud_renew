@@ -425,6 +425,41 @@ class HidenCloudBot:
                 invoice_links.append(self.normalize_url(href))
         return sorted(set(invoice_links))
 
+    def extract_server_error_message(self, soup):
+        selectors = [
+            '[role="alert"]',
+            '[class*="alert"]',
+            '[class*="text-red"]',
+            '[class*="text-danger"]',
+            '[class*="bg-red"]',
+            '[class*="border-red"]',
+            '[class*="error"]',
+        ]
+        ignored_phrases = [
+            'this action is irreversible',
+            'permanently deleted',
+            'delete server',
+            'sign out',
+        ]
+        error_keywords = [
+            'error', 'failed', 'failure', 'must ', 'cannot', 'not allowed',
+            'restricted', 'connect your discord', 'only renew',
+            '错误', '失败', '无法', '不能', '不允许', '受限'
+        ]
+
+        for element in soup.select(','.join(selectors)):
+            text = re.sub(r'\s+', ' ', element.get_text(" ", strip=True)).strip()
+            if not text:
+                continue
+
+            normalized = text.lower()
+            if any(phrase in normalized for phrase in ignored_phrases):
+                continue
+            if any(keyword in normalized for keyword in error_keywords):
+                return text
+
+        return ""
+
     def extract_form_payload(self, form):
         payload = {}
 
@@ -516,6 +551,11 @@ class HidenCloudBot:
             return False, None
 
         soup_resp = BeautifulSoup(response.text, 'html.parser')
+        server_error = self.extract_server_error_message(soup_resp)
+        if server_error:
+            self.log(f"⚠️ 续期请求被服务端拒绝，页面提示: {server_error}")
+            return True, 'server_reject'
+
         invoice_links = self.extract_invoice_links(soup_resp, require_payment_context=False)
         if invoice_links:
             for invoice_url in invoice_links:

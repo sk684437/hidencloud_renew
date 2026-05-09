@@ -77,6 +77,33 @@ class RenewInvoiceHandlingTests(unittest.TestCase):
         self.assertTrue(handled)
         self.assertEqual(outcome, "server_reject")
 
+    def test_role_alert_error_response_is_reported_before_invoice_poll(self):
+        bot = self.make_bot()
+        bot.check_and_pay_invoices = Mock()
+        response = FakeResponse(
+            '<div role="alert" class="border-red-300 bg-red-50 text-red-800">'
+            '<span>Error!</span> You must connect your Discord account before getting this free service.'
+            '</div>'
+        )
+
+        handled, outcome = bot.try_handle_invoice_from_response("147008", response)
+
+        self.assertTrue(handled)
+        self.assertEqual(outcome, "server_reject")
+        bot.check_and_pay_invoices.assert_not_called()
+        self.assertIn("Discord", bot.messages[-1])
+
+    def test_delete_warning_alert_is_not_treated_as_renew_error(self):
+        bot = self.make_bot()
+        soup = BeautifulSoup(
+            '<div role="alert" class="border-red-300 text-red-800">'
+            'Warning: This action is irreversible. All files will be permanently deleted.'
+            '</div>',
+            'html.parser',
+        )
+
+        self.assertEqual(bot.extract_server_error_message(soup), "")
+
     def test_perform_pay_from_html_returns_non_payable_and_records_invoice(self):
         bot = self.make_bot()
         invoice_url = "https://dash.hidencloud.com/payment/invoice/old-invoice"
